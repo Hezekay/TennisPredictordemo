@@ -1,91 +1,179 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import date
+import plotly.graph_objects as go
 
-# Page settings
-st.set_page_config(page_title="ATP/WTA Matchup Predictor", layout="wide", page_icon="🎾")
+# ------------------ PAGE CONFIG ------------------
+st.set_page_config(page_title="ATP/WTA Tennis Predictor", layout="wide")
 
-# --- HEADER ---
-st.title("ATP/WTA Matchup Prediction Demo")
+# ------------------ STYLES ------------------
 st.markdown("""
-This demo showcases how the **tennis outcome prediction interface** will look and work.  
-The predictions below use **sample data**, but the final system will use live ATP/WTA matches and real odds.
-""")
+<style>
+body {
+    background-color: #0E1117;
+    color: #EAEAEA;
+}
+h1, h2, h3 {
+    color: #FFFFFF;
+}
+.match-card {
+    background-color: #1A1C22;
+    border: 1px solid #2E2E2E;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    transition: 0.2s ease-in-out;
+}
+.match-card:hover {
+    border-color: #4A90E2;
+    box-shadow: 0 0 8px rgba(74,144,226,0.4);
+}
+.match-title {
+    font-weight: 600;
+    font-size: 16px;
+    color: #FFFFFF;
+}
+.match-info {
+    font-size: 13px;
+    color: #AAAAAA;
+}
+.metric-line {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    color: #DDDDDD;
+}
+.view-btn {
+    background-color: #2E2E2E;
+    border-radius: 6px;
+    padding: 6px 10px;
+    text-align: center;
+    margin-top: 8px;
+    color: #4A90E2;
+    font-weight: 500;
+}
+.view-btn:hover {
+    background-color: #3A3A3A;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# --- TOURNAMENT SELECTION ---
-tournaments = [
-    "Paris Masters", "Billie Jean King Cup", "ATP Finals", "WTA Finals", "Basel Open"
-]
-selected_tourney = st.selectbox("Select Tournament", tournaments)
-
+# ------------------ SAMPLE DATA ------------------
 matches = [
-    "Novak Djokovic vs Carlos Alcaraz",
-    "Daniil Medvedev vs Alexander Zverev",
-    "Iga Swiatek vs Coco Gauff",
-    "Aryna Sabalenka vs Jessica Pegula",
-    "Stefanos Tsitsipas vs Andrey Rublev"
+    {
+        "match": "Novak Djokovic vs Carlos Alcaraz",
+        "tournament": "Paris Masters",
+        "court": "Hard",
+        "spread": "-2.5",
+        "over": "2.5",
+        "p1_prob": 63,
+        "p2_prob": 37,
+        "aces": [8, 6],
+        "breaks": [3, 2],
+        "first_serve": [67, 64],
+        "rank": [1, 2],
+        "h2h": "Djokovic leads 3–2"
+    },
+    {
+        "match": "Iga Swiatek vs Coco Gauff",
+        "tournament": "WTA Finals",
+        "court": "Hard",
+        "spread": "-1.5",
+        "over": "2.5",
+        "p1_prob": 59,
+        "p2_prob": 41,
+        "aces": [5, 7],
+        "breaks": [4, 2],
+        "first_serve": [70, 62],
+        "rank": [1, 3],
+        "h2h": "Swiatek leads 7–2"
+    },
+    {
+        "match": "Daniil Medvedev vs Alexander Zverev",
+        "tournament": "ATP Finals",
+        "court": "Hard",
+        "spread": "+1.5",
+        "over": "2.5",
+        "p1_prob": 46,
+        "p2_prob": 54,
+        "aces": [9, 12],
+        "breaks": [2, 4],
+        "first_serve": [65, 69],
+        "rank": [3, 5],
+        "h2h": "Medvedev leads 10–8"
+    },
 ]
-selected_match = st.selectbox(" Select Match", matches)
 
-surface = np.random.choice(["Hard", "Clay", "Grass", "Indoor Hard"])
-match_date = date.today().strftime("%B %d, %Y")
+# ------------------ PAGE STATE ------------------
+if "selected_match" not in st.session_state:
+    st.session_state.selected_match = None
 
-st.markdown(f"**Surface:** {surface} | **Date:** {match_date}")
+# ------------------ TOURNAMENT DROPDOWN ------------------
+tournaments = ["All"] + sorted(list(set([m["tournament"] for m in matches])))
+selected_tourney = st.sidebar.selectbox("Select Tournament", tournaments)
 
-# --- FAKE MODEL PREDICTIONS ---
-player1, player2 = selected_match.split(" vs ")
-np.random.seed(len(selected_match))
-p1_win_prob = np.random.uniform(0.45, 0.75)
-p2_win_prob = 1 - p1_win_prob
-expected_sets = np.random.uniform(2.1, 2.8)
-game_spread = np.random.choice([-3.5, -2.5, -1.5, +1.5, +2.5, +3.5])
-over_under_line = 2.5
-over_prob = np.random.uniform(0.4, 0.7)
+# ------------------ MAIN TITLE ------------------
+st.title("🎾 ATP / WTA Match Predictor")
 
-# --- DISPLAY METRICS ---
-st.subheader("📈 Model Predictions")
+# ------------------ FILTER MATCHES ------------------
+if selected_tourney != "All":
+    filtered_matches = [m for m in matches if m["tournament"] == selected_tourney]
+else:
+    filtered_matches = matches
 
-col1, col2 = st.columns(2)
-with col1:
-    st.metric(f"Win Probability ({player1})", f"{p1_win_prob*100:.1f}%", delta=f"{(p1_win_prob-0.5)*100:.1f}% vs. 50/50")
-    st.metric("Expected Sets", f"{expected_sets:.2f}")
-    st.metric("Game Spread", f"{game_spread:+.1f}")
+# ------------------ OVERVIEW OR DETAILS ------------------
+if st.session_state.selected_match is None:
+    st.subheader("Today's Matches & Predictions")
+    for i, m in enumerate(filtered_matches):
+        col1, col2, col3 = st.columns([4, 2, 1])
+        with col1:
+            st.markdown(f"""
+            <div class='match-card'>
+                <div class='match-title'>{m["match"]}</div>
+                <div class='match-info'>{m["tournament"]} • {m["court"]} Court</div>
+                <div class='metric-line'>
+                    <div>{m["match"].split(" vs ")[0]}: <b>{m["p1_prob"]}%</b></div>
+                    <div>{m["match"].split(" vs ")[1]}: <b>{m["p2_prob"]}%</b></div>
+                </div>
+                <div class='match-info'>Spread: {m["spread"]} | O/U Sets: {m["over"]}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            if st.button("View Details", key=i):
+                st.session_state.selected_match = i
+else:
+    # ------------------ DETAILS VIEW ------------------
+    m = matches[st.session_state.selected_match]
+    st.button("← Back to Matches", on_click=lambda: st.session_state.update(selected_match=None))
 
-with col2:
-    st.metric(f"Win Probability ({player2})", f"{p2_win_prob*100:.1f}%", delta=f"{(p2_win_prob-0.5)*100:.1f}% vs. 50/50")
-    st.metric(f"Over/Under ({over_under_line} sets)", f"Over {over_prob*100:.0f}% / Under {100-over_prob*100:.0f}%")
+    player1, player2 = m["match"].split(" vs ")
+    st.header(f"{player1} vs {player2}")
+    st.caption(f"{m['tournament']} • {m['court']} Court")
 
-# --- HEAD TO HEAD ---
-st.subheader(f" Head-to-Head Record: {player1} vs {player2}")
+    # Win Probability
+    st.subheader("Win Probability")
+    prob_chart = go.Figure(go.Bar(
+        x=[player1, player2],
+        y=[m["p1_prob"], m["p2_prob"]],
+        marker_color=['#4A90E2', '#E24A4A']
+    ))
+    prob_chart.update_layout(
+        yaxis_title="Win Probability (%)",
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#EAEAEA')
+    )
+    st.plotly_chart(prob_chart, use_container_width=True)
 
-h2h_data = pd.DataFrame({
-    "Year": [2024, 2023, 2022, 2021],
-    "Tournament": ["Wimbledon", "US Open", "Madrid Open", "Rome Masters"],
-    "Winner": np.random.choice([player1, player2], size=4),
-    "Score": ["3–1", "3–2", "2–1", "2–0"],
-    "Surface": np.random.choice(["Hard", "Clay", "Grass"], size=4)
-})
+    # Player Stats
+    st.subheader("Key Match Stats (Simulated)")
+    stats_df = pd.DataFrame({
+        "Stat": ["Aces", "Breaks", "1st Serve %"],
+        player1: [m["aces"][0], m["breaks"][0], m["first_serve"][0]],
+        player2: [m["aces"][1], m["breaks"][1], m["first_serve"][1]]
+    })
+    st.dataframe(stats_df, hide_index=True, use_container_width=True)
 
-st.dataframe(h2h_data, use_container_width=True)
-
-# --- VISUALIZATION ---
-import matplotlib.pyplot as plt
-
-fig, ax = plt.subplots()
-ax.bar([player1, player2], [p1_win_prob*100, p2_win_prob*100])
-ax.set_ylabel("Win Probability (%)")
-ax.set_title("Predicted Win Probabilities")
-st.pyplot(fig)
-
-st.divider()
-
-# --- FOOTER ---
-st.markdown("""
-✅ **Next steps for full version:**
-- Integrate live scraping of ATP/WTA match and odds data.  
-- Replace fake model with trained ML model (surface-aware).  
-- Embed this Streamlit app into your website or host standalone.  
-
-*Demo by Hezekiah — designed for ATP/ WTA Tennis Prediction Model.*
-""")
+    # H2H + Rank
+    st.markdown(f"**Head-to-Head:** {m['h2h']}")
+    st.markdown(f"**ATP/WTA Ranks:** {player1} - #{m['rank'][0]} | {player2} - #{m['rank'][1]}")
